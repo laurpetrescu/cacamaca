@@ -1,5 +1,5 @@
-use lazy_static::lazy_static;
-use std::collections::HashMap;
+//use lazy_static::lazy_static;
+//use std::collections::HashMap;
 
 pub mod lexer {
 	const ILLEGAL: &str		= "ILLEGAL";
@@ -15,8 +15,8 @@ pub mod lexer {
 	const ELSE: &str 		= "else";
 	const RETURN: &str 		= "return";
 	
-	const EQ: &str 			= "==";
-	const NOT_EQ: &str		= "!=";
+	const EQUAL: &str		= "==";
+	const NOT_EQUAL: &str	= "!=";
 	
 	const ASSIGN: char 		= '=';
 	const PLUS: char 		= '+';
@@ -47,6 +47,8 @@ pub mod lexer {
 		Identifier(String),
 		Integer(String),
 	
+		Equal,
+		NotEqual,
 		Assign,
 		Plus,
 		Minus,
@@ -82,7 +84,7 @@ pub mod lexer {
 	};
 }
 	
-	fn lookup_keyword(keyword: String) -> Tokens {
+	fn lookup_keyword(keyword: &String) -> Tokens {
 		match KEYWORDS.get(&keyword[..]) {
 			Some(key) => {
 				println!("deb key word: {}", keyword);
@@ -90,7 +92,7 @@ pub mod lexer {
 			},
 			None => {
 				println!("deb indentifier: {}", keyword);
-				Tokens::Identifier(keyword)
+				Tokens::Identifier(keyword.to_string())
 			}
 		}
 	}
@@ -149,7 +151,7 @@ ch: '\0'};
 		/*
 		 * Peek one char without moving the position marker
 		 */
-		pub fn peek_char(self) -> char {
+		pub fn peek_char(&self) -> char {
 			if self.read_position >= self.input.len() {
 				'\0'
 			} else {
@@ -187,12 +189,29 @@ ch: '\0'};
 		 */
 		pub fn next_token(&mut self) -> Token {
 			skip_whitespace(self);
+			let mut lit: String = self.ch.to_string();
 			
-			let tok: Tokens = match self.ch {
-				ASSIGN => Tokens::Assign,
+			let tok = match self.ch {
+				ASSIGN => {
+					if self.peek_char() == ASSIGN {
+						self.read_char();
+						lit = String::from(EQUAL);
+						Tokens::Equal
+					} else {
+						Tokens::Assign
+					}
+				},
+				BANG => {
+					if self.peek_char() == ASSIGN {
+						self.read_char();
+						lit = String::from(NOT_EQUAL);
+						Tokens::NotEqual
+					} else {
+						Tokens::Bang
+					}
+				},
 				PLUS => Tokens::Plus,
 				MINUS => Tokens::Minus,
-				BANG => Tokens::Bang,
 				SLASH => Tokens::Slash,
 				ASTERIX => Tokens::Asterix,
 				LT => Tokens::Lt,
@@ -207,16 +226,18 @@ ch: '\0'};
 				_ => {
 					println!("deb {}", self.ch);
 					if is_valid_identifier(self.ch) {
-						lookup_keyword(self.read_identifier())
+						lit = self.read_identifier();
+						lookup_keyword(&lit)
 					} else if is_digit(self.ch) {
-						Tokens::Integer(self.read_number())
+						lit = self.read_number();
+						Tokens::Integer(lit.to_string())
 					} else {
 						Tokens::Invalid(self.ch.to_string())
 					}
 				}
 			};
 			
-			let token = Token{token_type: tok, literal: self.ch.to_string()};
+			let token = Token{token_type: tok, literal: lit};
 			self.read_char();
 			return token;
 		}
