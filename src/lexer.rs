@@ -1,11 +1,11 @@
 //use lazy_static::lazy_static;
 //use std::collections::HashMap;
 
+#[allow(dead_code)]
 pub mod lexer {
-	const ILLEGAL: &str		= "ILLEGAL";
-	const EOF: &str			= "EOF";
-	const IDENTIFIER: &str 	= "IDENTIFIER";
-	const INTEGER: &str		= "INTEGER";
+// 	const ILLEGAL: &str		= "ILLEGAL";
+// 	const IDENTIFIER: &str 	= "IDENTIFIER";
+// 	const INTEGER: &str		= "INTEGER";
 	
 	const FUNCTION: &str	= "fn";
 	const LET: &str 		= "let";
@@ -14,10 +14,13 @@ pub mod lexer {
 	const IF: &str	 		= "if";
 	const ELSE: &str 		= "else";
 	const RETURN: &str 		= "return";
+	const KAKA: &str 		= "kaka";
+	const MACA: &str 		= "maca";
 	
 	const EQUAL: &str		= "==";
 	const NOT_EQUAL: &str	= "!=";
 	
+	const EOF: char			= '\0';
 	const ASSIGN: char 		= '=';
 	const PLUS: char 		= '+';
 	const MINUS: char 		= '-';
@@ -34,7 +37,7 @@ pub mod lexer {
 	const LBRACE: char 		= '{';
 	const RBRACE: char 		= '}';
 	
-	
+	#[derive(Debug)]
 	pub struct Token {
 		pub token_type: Tokens,
 		pub literal: String
@@ -43,7 +46,10 @@ pub mod lexer {
 	#[derive(Debug, Clone)]
 	pub enum Tokens {
 		Invalid(String),
-		Eof(String),
+		Eof,
+		Kaka,
+		Maca,
+		
 		Identifier(String),
 		Integer(String),
 	
@@ -79,6 +85,13 @@ pub mod lexer {
 		let mut map = std::collections::HashMap::new();
 		map.insert(FUNCTION, Tokens::Function);
 		map.insert(LET, Tokens::Let);
+		map.insert(TRUE, Tokens::True);
+		map.insert(FALSE, Tokens::False);
+		map.insert(IF, Tokens::If);
+		map.insert(ELSE, Tokens::Else);
+		map.insert(RETURN, Tokens::Return);
+		map.insert(KAKA, Tokens::Kaka);
+		map.insert(MACA, Tokens::Maca);
 		
 		map
 	};
@@ -87,11 +100,11 @@ pub mod lexer {
 	fn lookup_keyword(keyword: &String) -> Tokens {
 		match KEYWORDS.get(&keyword[..]) {
 			Some(key) => {
-				println!("deb key word: {}", keyword);
+				//println!("deb key word: {}", keyword);
 				key.clone()
 			},
 			None => {
-				println!("deb indentifier: {}", keyword);
+				//println!("deb indentifier: {}", keyword);
 				Tokens::Identifier(keyword.to_string())
 			}
 		}
@@ -223,8 +236,9 @@ ch: '\0'};
 				RPAREN => Tokens::Rparen,
 				LBRACE => Tokens::Lbrace,
 				RBRACE => Tokens::Rbrace,
+				EOF => Tokens::Eof,
 				_ => {
-					println!("deb {}", self.ch);
+					//println!("deb {}", self.ch);
 					if is_valid_identifier(self.ch) {
 						lit = self.read_identifier();
 						lookup_keyword(&lit)
