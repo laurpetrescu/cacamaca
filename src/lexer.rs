@@ -37,21 +37,21 @@ pub mod lexer {
 	const LBRACE: char 		= '{';
 	const RBRACE: char 		= '}';
 	
-	#[derive(Debug)]
+	#[derive(Debug, Clone)]
 	pub struct Token {
-		pub token_type: Tokens,
+		pub token_type: TokenType,
 		pub literal: String
 	}
 
-	#[derive(Debug, Clone)]
-	pub enum Tokens {
-		Invalid(String),
+	#[derive(Debug, Clone, PartialEq, Eq)]
+	pub enum TokenType {
+		Invalid,
 		Eof,
 		Kaka,
 		Maca,
 		
-		Identifier(String),
-		Integer(String),
+		Identifier,
+		Integer,
 	
 		Equal,
 		NotEqual,
@@ -81,23 +81,23 @@ pub mod lexer {
 	}
 	
 	lazy_static::lazy_static! {
-	static ref KEYWORDS: std::collections::HashMap<&'static str, Tokens> = {
+	static ref KEYWORDS: std::collections::HashMap<&'static str, TokenType> = {
 		let mut map = std::collections::HashMap::new();
-		map.insert(FUNCTION, Tokens::Function);
-		map.insert(LET, Tokens::Let);
-		map.insert(TRUE, Tokens::True);
-		map.insert(FALSE, Tokens::False);
-		map.insert(IF, Tokens::If);
-		map.insert(ELSE, Tokens::Else);
-		map.insert(RETURN, Tokens::Return);
-		map.insert(KAKA, Tokens::Kaka);
-		map.insert(MACA, Tokens::Maca);
+		map.insert(FUNCTION, TokenType::Function);
+		map.insert(LET, TokenType::Let);
+		map.insert(TRUE, TokenType::True);
+		map.insert(FALSE, TokenType::False);
+		map.insert(IF, TokenType::If);
+		map.insert(ELSE, TokenType::Else);
+		map.insert(RETURN, TokenType::Return);
+		map.insert(KAKA, TokenType::Kaka);
+		map.insert(MACA, TokenType::Maca);
 		
 		map
 	};
 }
 	
-	fn lookup_keyword(keyword: &String) -> Tokens {
+	fn lookup_keyword(keyword: &String) -> TokenType {
 		match KEYWORDS.get(&keyword[..]) {
 			Some(key) => {
 				//println!("deb key word: {}", keyword);
@@ -105,11 +105,12 @@ pub mod lexer {
 			},
 			None => {
 				//println!("deb indentifier: {}", keyword);
-				Tokens::Identifier(keyword.to_string())
+				TokenType::Identifier
 			}
 		}
 	}
 	
+	#[allow(dead_code)]
 	pub struct Lexer {
 		input: String,
 		position: usize,
@@ -136,13 +137,13 @@ pub mod lexer {
 		}
 	}
 	
+	#[allow(dead_code)]
 	impl Lexer {
 		/*
 		 * Constructor
 		 */
 		pub fn new(input: String) -> Lexer {
-			let mut lex = Lexer{input: input, position: 0, read_position: 0, 
-ch: '\0'};
+			let mut lex = Lexer{input: input, position: 0, read_position: 0, ch: '\0'};
 			lex.read_char();
 			return lex;
 		}
@@ -177,11 +178,11 @@ ch: '\0'};
 		 */
 		pub fn read_identifier(&mut self) -> String {
 			let pos = self.position;
-			while is_valid_identifier(self.ch) {
+			while is_valid_identifier(self.peek_char()) {
 				self.read_char();
 			}
 			
-			self.input[pos..self.position].to_string()
+			self.input[pos..self.position+1].to_string()
 		}
 		
 		/*
@@ -190,11 +191,11 @@ ch: '\0'};
 		pub fn read_number(&mut self) -> String {
 			let pos = self.position;
 			
-			while is_digit(self.ch) {
+			while is_digit(self.peek_char()) {
 				self.read_char();
 			}
 			
-			self.input[pos..self.position].to_string()
+			self.input[pos..self.position+1].to_string()
 		}
 		
 		/*
@@ -209,34 +210,34 @@ ch: '\0'};
 					if self.peek_char() == ASSIGN {
 						self.read_char();
 						lit = String::from(EQUAL);
-						Tokens::Equal
+						TokenType::Equal
 					} else {
-						Tokens::Assign
+						TokenType::Assign
 					}
 				},
 				BANG => {
 					if self.peek_char() == ASSIGN {
 						self.read_char();
 						lit = String::from(NOT_EQUAL);
-						Tokens::NotEqual
+						TokenType::NotEqual
 					} else {
-						Tokens::Bang
+						TokenType::Bang
 					}
 				},
-				PLUS => Tokens::Plus,
-				MINUS => Tokens::Minus,
-				SLASH => Tokens::Slash,
-				ASTERIX => Tokens::Asterix,
-				LT => Tokens::Lt,
-				GT => Tokens::Gt,
+				PLUS => TokenType::Plus,
+				MINUS => TokenType::Minus,
+				SLASH => TokenType::Slash,
+				ASTERIX => TokenType::Asterix,
+				LT => TokenType::Lt,
+				GT => TokenType::Gt,
 				
-				COMMA => Tokens::Comma,
-				SEMICOLON => Tokens::Semicolon,
-				LPAREN => Tokens::Lparen,
-				RPAREN => Tokens::Rparen,
-				LBRACE => Tokens::Lbrace,
-				RBRACE => Tokens::Rbrace,
-				EOF => Tokens::Eof,
+				COMMA => TokenType::Comma,
+				SEMICOLON => TokenType::Semicolon,
+				LPAREN => TokenType::Lparen,
+				RPAREN => TokenType::Rparen,
+				LBRACE => TokenType::Lbrace,
+				RBRACE => TokenType::Rbrace,
+				EOF => TokenType::Eof,
 				_ => {
 					//println!("deb {}", self.ch);
 					if is_valid_identifier(self.ch) {
@@ -244,9 +245,9 @@ ch: '\0'};
 						lookup_keyword(&lit)
 					} else if is_digit(self.ch) {
 						lit = self.read_number();
-						Tokens::Integer(lit.to_string())
+						TokenType::Integer
 					} else {
-						Tokens::Invalid(self.ch.to_string())
+						TokenType::Invalid
 					}
 				}
 			};
@@ -256,6 +257,201 @@ ch: '\0'};
 			return token;
 		}
 	}
+
+	
+/////////////////////////////////////////////////////////////////////////////////
+
+// 	trait NodeTrait {
+// 		fn token_literal(&self) -> String;
+// 	}
+	
+	trait StatementTrait {
+		fn token_literal(&self) -> &str;
+	}
+	
+// 	trait ExpressionTrait {
+// 		fn expression_node(&self);
+// 	}
+	
+	struct Node;
+	struct Expression;
+	
+	struct Identifier {
+		token: Token,
+		value: String
+	}
+	
+	impl StatementTrait for Identifier {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+	}
+	
+	struct LetStatement {
+		token: Token,
+		name: String,
+		value: Expression
+	}
+	
+	impl StatementTrait for LetStatement {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+	}
+	
+	impl LetStatement {
+		pub fn new() -> Box<LetStatement> {
+			Box::new(LetStatement{
+				token: Token{token_type: TokenType::Let, literal: LET.to_string()},
+				name: String::from(""),
+				value: Expression{}
+			})
+		}
+	}
+	
+	struct ReturnStatement {
+		token: Token
+		//return_value: ReturnValue
+	}
+	
+	impl StatementTrait for ReturnStatement {
+		fn token_literal(&self) -> &str {
+			&self.token.literal
+		}
+	}
+	
+	
+	impl ReturnStatement {
+		pub fn new() -> Box<ReturnStatement> {
+			Box::new(ReturnStatement{
+				token: Token{token_type: TokenType::Return, literal: RETURN.to_string()}
+				//return_value: 
+			})
+		}
+	}
+	
+	struct Program {
+		statements: Vec<Box<dyn StatementTrait>>
+	}
+	
+	impl Program {
+		fn token_literal(&self) -> &str {
+			if self.statements.len() > 0 {
+				self.statements[0].token_literal()
+			} else {
+				""
+			}
+		}
+	}
+	
+	struct Parser {
+		lexer: Lexer,
+		errors: Vec<String>,
+		current_token: Token,
+		peek_token: Token
+	}
+	
+	impl Parser {
+		pub fn new(lex: Lexer) -> Parser {
+			let mut parser = Parser{lexer: lex,
+				errors: vec![],
+				current_token: Token{token_type: TokenType::Eof, literal: String::from("")},
+				peek_token: Token{token_type: TokenType::Eof, literal: String::from("")}};
+			
+			// populate current and peek TokenType
+			parser.next_token();
+			parser.next_token();
+			
+			return parser;
+		}
+		
+		pub fn errors(&self) -> &Vec<String> {
+			&self.errors
+		}
+		
+		pub fn peek_error(&mut self, tok: TokenType) {
+			self.errors.push(format!("expected next token to be {:?}, got {:?} instead",
+				tok, self.peek_token.token_type));
+		}
+		
+		pub fn next_token(&mut self) {
+			self.current_token = self.peek_token.clone();
+			self.peek_token = self.lexer.next_token();
+		}
+		
+		pub fn parse_program(&mut self) -> Program {
+			let mut program = Program{statements: vec![]};
+			
+			loop {
+				match self.current_token.token_type {
+					TokenType::Eof => break,
+					_ => {
+						if let Some(statement) = self.parse_statement() {
+							program.statements.push(statement);
+						}
+						
+						self.next_token();
+					}
+				}
+			}
+			
+			return program;
+		}
+		
+		pub fn parse_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			match self.current_token.token_type {
+				TokenType::Let => self.parse_let_statement(),
+				TokenType::Return => self.parse_return_statement(),
+				_ => None
+			}
+		}
+		
+		pub fn parse_let_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			let stmt = LetStatement::new();
+			
+			if !self.expect_peek(TokenType::Identifier) {
+				return None;
+			}
+			
+			while !self.is_current_token(TokenType::Semicolon) {
+				self.next_token();
+			}
+			
+			return Some(stmt);
+		}
+		
+		pub fn parse_return_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			let stmt = ReturnStatement::new();
+			
+			self.next_token();
+			
+			while !self.is_current_token(TokenType::Semicolon) {
+				self.next_token();
+			}
+			
+			return Some(stmt);
+		}
+		
+		fn is_current_token(&self, tok: TokenType) -> bool {
+			tok == self.current_token.token_type
+		}
+		
+		fn is_peek_token(&self, tok: TokenType) -> bool {
+			tok == self.peek_token.token_type
+		}
+		
+		fn expect_peek(&mut self, tok: TokenType) -> bool {
+			if self.is_peek_token(tok.clone()) {
+				self.next_token();
+				return true;
+			} else {
+				self.peek_error(tok);
+				return false;
+			}
+		}
+	}
+	
+	
 }
 
 // #[cfg(test)]
@@ -271,7 +467,7 @@ ch: '\0'};
 // 		let mut tok = l.next_token();
 // 	
 // 		match tok {
-//  			lexer::lexer::Tokens::Identifier(s) => {
+//  			lexer::lexer::TokenType::Identifier(s) => {
 // 				println!("{}", s);
 // 			},
 // 			_ => {

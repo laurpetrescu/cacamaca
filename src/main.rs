@@ -29,7 +29,7 @@ fn start() {
 		loop {
 			let tok = lex.next_token();
 			match tok.token_type {
-				lx::Tokens::Eof => break,
+				lx::TokenType::Eof => break,
 				_ => println!("{:?}", tok)
 			}
 		}
