@@ -262,19 +262,39 @@ pub mod lexer {
 /////////////////////////////////////////////////////////////////////////////////
 
 // 	trait NodeTrait {
-// 		fn token_literal(&self) -> String;
+// 		fn token_literal(&self) -> &str;
+// 		fn to_string(&self) -> String;
 // 	}
 	
 	trait StatementTrait {
 		fn token_literal(&self) -> &str;
+		fn to_string(&self) -> String;
 	}
 	
 // 	trait ExpressionTrait {
 // 		fn expression_node(&self);
 // 	}
 	
-	struct Node;
-	struct Expression;
+// 	struct Node;
+	struct Expression {
+		token: Token
+	}
+	
+	impl Expression {
+		fn new() -> Expression {
+			Expression{token: Token{token_type: TokenType::Eof, literal: EOF.to_string()}}
+		}
+	}
+	
+	impl StatementTrait for Expression {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			self.token.literal.clone()
+		}
+	}
 	
 	struct Identifier {
 		token: Token,
@@ -284,6 +304,10 @@ pub mod lexer {
 	impl StatementTrait for Identifier {
 		fn token_literal(&self) -> &str {
 			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			self.value.clone()
 		}
 	}
 	
@@ -297,6 +321,10 @@ pub mod lexer {
 		fn token_literal(&self) -> &str {
 			self.token.literal.as_str()
 		}
+		
+		fn to_string(&self) -> String {
+			format!("{} {} = {}", self.token.literal, self.name, self.value.to_string())
+		}
 	}
 	
 	impl LetStatement {
@@ -304,19 +332,23 @@ pub mod lexer {
 			Box::new(LetStatement{
 				token: Token{token_type: TokenType::Let, literal: LET.to_string()},
 				name: String::from(""),
-				value: Expression{}
+				value: Expression::new()
 			})
 		}
 	}
 	
 	struct ReturnStatement {
-		token: Token
-		//return_value: ReturnValue
+		token: Token,
+		return_value: Expression
 	}
 	
 	impl StatementTrait for ReturnStatement {
 		fn token_literal(&self) -> &str {
 			&self.token.literal
+		}
+		
+		fn to_string(&self) -> String {
+			format!("{} {}", self.token.literal, self.return_value.to_string())
 		}
 	}
 	
@@ -324,9 +356,24 @@ pub mod lexer {
 	impl ReturnStatement {
 		pub fn new() -> Box<ReturnStatement> {
 			Box::new(ReturnStatement{
-				token: Token{token_type: TokenType::Return, literal: RETURN.to_string()}
-				//return_value: 
+				token: Token{token_type: TokenType::Return, literal: RETURN.to_string()},
+				return_value: Expression::new()
 			})
+		}
+	}
+	
+	struct ExpressionStatement {
+		token: Token,
+		expression: Expression
+	}
+	
+	impl StatementTrait for ExpressionStatement {
+		fn token_literal(&self) -> &str {
+			&self.token.literal
+		}
+		
+		fn to_string(&self) -> String {
+			self.expression.to_string()
 		}
 	}
 	
@@ -335,12 +382,27 @@ pub mod lexer {
 	}
 	
 	impl Program {
+		fn new() -> Program {
+			Program{statements: vec![]}
+		}
+	}
+	
+	impl StatementTrait for Program {
 		fn token_literal(&self) -> &str {
 			if self.statements.len() > 0 {
 				self.statements[0].token_literal()
 			} else {
 				""
 			}
+		}
+		
+		fn to_string(&self) -> String {
+			let mut program_string = String::new();
+			for s in &self.statements {
+				program_string.push_str(&s.to_string());
+			}
+			
+			return program_string;
 		}
 	}
 	
@@ -380,7 +442,7 @@ pub mod lexer {
 		}
 		
 		pub fn parse_program(&mut self) -> Program {
-			let mut program = Program{statements: vec![]};
+			let mut program = Program::new();
 			
 			loop {
 				match self.current_token.token_type {
