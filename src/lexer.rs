@@ -43,7 +43,7 @@ pub mod lexer {
 		pub literal: String
 	}
 
-	#[derive(Debug, Clone, PartialEq, Eq)]
+	#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 	pub enum TokenType {
 		Invalid,
 		Eof,
@@ -94,8 +94,18 @@ pub mod lexer {
 		map.insert(MACA, TokenType::Maca);
 		
 		map
-	};
-}
+		};
+	}
+	
+	pub enum Precedence {
+		Lowest = 0,
+		Equals = 1, 		// ==
+		LessGreater = 2, 	// > or <
+		Sum = 3,			// +
+		Product = 4,		// *
+		Prefix = 5,			// -x or !x
+		Call = 6
+	}
 	
 	fn lookup_keyword(keyword: &String) -> TokenType {
 		match KEYWORDS.get(&keyword[..]) {
@@ -352,7 +362,6 @@ pub mod lexer {
 		}
 	}
 	
-	
 	impl ReturnStatement {
 		pub fn new() -> Box<ReturnStatement> {
 			Box::new(ReturnStatement{
@@ -365,6 +374,15 @@ pub mod lexer {
 	struct ExpressionStatement {
 		token: Token,
 		expression: Expression
+	}
+	
+	impl ExpressionStatement {
+		pub fn new() -> Box<ExpressionStatement> {
+			Box::new(ExpressionStatement{
+				token: Token{token_type: TokenType::Identifier, literal: EOF.to_string()},
+				expression: Expression::new()
+			})
+		}
 	}
 	
 	impl StatementTrait for ExpressionStatement {
@@ -406,19 +424,35 @@ pub mod lexer {
 		}
 	}
 	
+	type InfixParserFn = fn() -> Expression;
+	type PrefixParserFn = fn(Expression) -> Expression;
+	
 	struct Parser {
 		lexer: Lexer,
 		errors: Vec<String>,
 		current_token: Token,
-		peek_token: Token
+		peek_token: Token,
+		infix_parsers: std::collections::HashMap<TokenType, InfixParserFn>,
+		prefix_parsers: std::collections::HashMap<TokenType, PrefixParserFn>
 	}
 	
+	fn parse_identifier(parser: &Parser) -> Expression {
+		Expression{token: parser.current_token,
+			value: parser.current_token.literal}
+	}
+		
+		
 	impl Parser {
 		pub fn new(lex: Lexer) -> Parser {
 			let mut parser = Parser{lexer: lex,
 				errors: vec![],
 				current_token: Token{token_type: TokenType::Eof, literal: String::from("")},
-				peek_token: Token{token_type: TokenType::Eof, literal: String::from("")}};
+				peek_token: Token{token_type: TokenType::Eof, literal: String::from("")},
+				infix_parsers: std::collections::HashMap::new(),
+				prefix_parsers: std::collections::HashMap::new()
+			};
+			
+			parser.prefix_parsers.insert(TokenType::Identifier, parse_identifier);
 			
 			// populate current and peek TokenType
 			parser.next_token();
@@ -464,7 +498,7 @@ pub mod lexer {
 			match self.current_token.token_type {
 				TokenType::Let => self.parse_let_statement(),
 				TokenType::Return => self.parse_return_statement(),
-				_ => None
+				_ => self.parse_expression_statement()
 			}
 		}
 		
@@ -494,6 +528,27 @@ pub mod lexer {
 			return Some(stmt);
 		}
 		
+		pub fn parse_expression_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			let stmt = ExpressionStatement::new();
+			
+			stmt.expression = self.parse_expression(Precedence::Lowest);
+			
+			while !self.is_current_token(TokenType::Semicolon) {
+				self.next_token();
+			}
+			
+			return Some(stmt);
+		}
+		
+		fn parse_expression(&self, prec: Precedence) -> Expression {
+			if let Some(prefix) = self.prefix_parsers.get(prec) {
+				prefix(&self)
+			} else {
+				Expression::new()
+			}
+		}
+		
+		
 		fn is_current_token(&self, tok: TokenType) -> bool {
 			tok == self.current_token.token_type
 		}
@@ -510,6 +565,14 @@ pub mod lexer {
 				self.peek_error(tok);
 				return false;
 			}
+		}
+		
+		pub fn register_infix(&mut self, tok: TokenType, infix: InfixParserFn) {
+			self.infix_parsers.insert(tok, infix);
+		}
+		
+		pub fn register_prefix(&mut self, tok: TokenType, prefix: PrefixParserFn) {
+			self.prefix_parsers.insert(tok, prefix);
 		}
 	}
 	
