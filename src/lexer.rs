@@ -42,6 +42,12 @@ pub mod lexer {
 		pub token_type: TokenType,
 		pub literal: String
 	}
+	
+	impl Token {
+		fn new() -> Token {
+			Token{token_type: TokenType::Eof, literal: String::new()}
+		}
+	}
 
 	#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 	pub enum TokenType {
@@ -281,9 +287,10 @@ pub mod lexer {
 		fn to_string(&self) -> String;
 	}
 	
-// 	trait ExpressionTrait {
-// 		fn expression_node(&self);
-// 	}
+	trait ExpressionTrait {
+		fn token_literal(&self) -> &str;
+		fn to_string(&self) -> String;
+	}
 	
 // 	struct Node;
 	struct Expression {
@@ -296,28 +303,65 @@ pub mod lexer {
 		}
 	}
 	
-	impl StatementTrait for Expression {
+	impl ExpressionTrait for Expression {
 		fn token_literal(&self) -> &str {
 			self.token.literal.as_str()
 		}
-		
+
 		fn to_string(&self) -> String {
 			self.token.literal.clone()
 		}
 	}
 	
-	struct Identifier {
+// 	impl StatementTrait for Expression {
+// 		fn token_literal(&self) -> &str {
+// 			self.token.literal.as_str()
+// 		}
+// 		
+// 		fn to_string(&self) -> String {
+// 			self.token.literal.clone()
+// 		}
+// 	}
+	
+	struct IdentifierExpression {
 		token: Token,
 		value: String
 	}
 	
-	impl StatementTrait for Identifier {
+	impl IdentifierExpression {
+		fn new() -> IdentifierExpression {
+			IdentifierExpression{token: Token::new(), value: String::new()}
+		}
+	}
+	
+	impl ExpressionTrait for IdentifierExpression {
 		fn token_literal(&self) -> &str {
 			self.token.literal.as_str()
 		}
 		
 		fn to_string(&self) -> String {
 			self.value.clone()
+		}
+	}
+	
+	struct IntegerExpression {
+		token: Token,
+		value: i64
+	}
+	
+	impl IntegerExpression {
+		fn new() -> IntegerExpression {
+			IntegerExpression{token: Token::new(), value: 0}
+		}
+	}
+	
+	impl ExpressionTrait for IntegerExpression {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			self.token.literal.clone()
 		}
 	}
 	
@@ -341,7 +385,7 @@ pub mod lexer {
 		pub fn new() -> Box<LetStatement> {
 			Box::new(LetStatement{
 				token: Token{token_type: TokenType::Let, literal: LET.to_string()},
-				name: String::from(""),
+				name: String::new(),
 				value: Expression::new()
 			})
 		}
@@ -373,14 +417,14 @@ pub mod lexer {
 	
 	struct ExpressionStatement {
 		token: Token,
-		expression: Expression
+		expression: Box<dyn ExpressionTrait>
 	}
 	
 	impl ExpressionStatement {
 		pub fn new() -> Box<ExpressionStatement> {
 			Box::new(ExpressionStatement{
 				token: Token{token_type: TokenType::Identifier, literal: EOF.to_string()},
-				expression: Expression::new()
+				expression: Box::new(Expression::new())
 			})
 		}
 	}
@@ -424,10 +468,12 @@ pub mod lexer {
 		}
 	}
 	
-	type InfixParserFn = fn() -> Expression;
-	type PrefixParserFn = fn(Expression) -> Expression;
+	type InfixParserFn = fn() -> Option<Box<dyn ExpressionTrait>>;
+	type PrefixParserFn = fn(&Token) -> Option<Box<dyn ExpressionTrait>>;
+		
 	
 	struct Parser {
+		
 		lexer: Lexer,
 		errors: Vec<String>,
 		current_token: Token,
@@ -436,23 +482,30 @@ pub mod lexer {
 		prefix_parsers: std::collections::HashMap<TokenType, PrefixParserFn>
 	}
 	
-	fn parse_identifier(parser: &Parser) -> Expression {
-		Expression{token: parser.current_token,
-			value: parser.current_token.literal}
+	fn parse_identifier(_tok: &Token) -> Option<Box<dyn ExpressionTrait>> {
+		None
 	}
-		
+	
+	fn parse_integer(tok: &Token) -> Option<Box<dyn ExpressionTrait>> {
+		if let Ok(i) = tok.literal.parse::<i64>() {
+			Some(Box::new(IntegerExpression{token: tok.clone(), value: i}))
+		} else {
+			None
+		}
+	}
 		
 	impl Parser {
 		pub fn new(lex: Lexer) -> Parser {
 			let mut parser = Parser{lexer: lex,
 				errors: vec![],
-				current_token: Token{token_type: TokenType::Eof, literal: String::from("")},
-				peek_token: Token{token_type: TokenType::Eof, literal: String::from("")},
+				current_token: Token{token_type: TokenType::Eof, literal: String::new()},
+				peek_token: Token{token_type: TokenType::Eof, literal: String::new()},
 				infix_parsers: std::collections::HashMap::new(),
 				prefix_parsers: std::collections::HashMap::new()
 			};
 			
 			parser.prefix_parsers.insert(TokenType::Identifier, parse_identifier);
+			parser.prefix_parsers.insert(TokenType::Integer, parse_integer);
 			
 			// populate current and peek TokenType
 			parser.next_token();
@@ -529,22 +582,24 @@ pub mod lexer {
 		}
 		
 		pub fn parse_expression_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
-			let stmt = ExpressionStatement::new();
-			
-			stmt.expression = self.parse_expression(Precedence::Lowest);
-			
-			while !self.is_current_token(TokenType::Semicolon) {
-				self.next_token();
+			if let Some(expr) = self.parse_expression(Precedence::Lowest) {
+				while !self.is_current_token(TokenType::Semicolon) {
+					self.next_token();
+				}
+				
+				Some(Box::new(ExpressionStatement{
+					token: self.current_token.clone(),
+					expression: expr}))
+			} else {
+				None
 			}
-			
-			return Some(stmt);
 		}
 		
-		fn parse_expression(&self, prec: Precedence) -> Expression {
-			if let Some(prefix) = self.prefix_parsers.get(prec) {
-				prefix(&self)
+		fn parse_expression(&self, _prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
+			if let Some(prefix) = self.prefix_parsers.get(&self.current_token.token_type) {
+				prefix(&self.current_token)
 			} else {
-				Expression::new()
+				None
 			}
 		}
 		
