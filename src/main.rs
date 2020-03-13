@@ -25,14 +25,17 @@ fn start() {
 			line.pop();
 		}
 		
-		let mut lex = lx::Lexer::new(line);
-		loop {
-			let tok = lex.next_token();
-			match tok.token_type {
-				lx::TokenType::Eof => break,
-				_ => println!("{:?}", tok)
-			}
-		}
+		let lex = lx::Lexer::new(line);
+		let mut parser = lx::Parser::new(lex);
+		
+		parser.parse_program();
+// 		loop {
+// 			let tok = lex.next_token();
+// 			match tok.token_type {
+// 				lx::TokenType::Eof => break,
+// 				_ => println!("{:?}", tok)
+// 			}
+// 		}
 	}
 }
 

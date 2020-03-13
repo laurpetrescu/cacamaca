@@ -103,6 +103,7 @@ pub mod lexer {
 		};
 	}
 	
+	#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 	pub enum Precedence {
 		Lowest = 0,
 		Equals = 1, 		// ==
@@ -111,6 +112,22 @@ pub mod lexer {
 		Product = 4,		// *
 		Prefix = 5,			// -x or !x
 		Call = 6
+	}
+	
+	lazy_static::lazy_static! {
+	static ref PRECEDENCES: std::collections::HashMap<TokenType, Precedence> = {
+		let mut map = std::collections::HashMap::new();
+		map.insert(TokenType::Equal, Precedence::Equals);
+		map.insert(TokenType::NotEqual, Precedence::Equals);
+		map.insert(TokenType::Lt, Precedence::LessGreater);
+		map.insert(TokenType::Gt, Precedence::LessGreater);
+		map.insert(TokenType::Plus, Precedence::Sum);
+		map.insert(TokenType::Minus, Precedence::Sum);
+		map.insert(TokenType::Slash, Precedence::Product);
+		map.insert(TokenType::Asterix, Precedence::Product);
+		
+		map
+		};
 	}
 	
 	fn lookup_keyword(keyword: &String) -> TokenType {
@@ -299,7 +316,7 @@ pub mod lexer {
 	
 	impl Expression {
 		fn new() -> Expression {
-			Expression{token: Token{token_type: TokenType::Eof, literal: EOF.to_string()}}
+			Expression{token: Token{token_type: TokenType::Eof, literal: String::new()}}
 		}
 	}
 	
@@ -365,6 +382,64 @@ pub mod lexer {
 		}
 	}
 	
+	struct PrefixExpression {
+		token: Token,
+		operator: String,
+		right: Option<Box<dyn ExpressionTrait>>
+	}
+	
+	impl PrefixExpression {
+		fn new() -> PrefixExpression {
+			PrefixExpression{token: Token::new(), operator: String::new(), right: None}
+		}
+	}
+	
+	impl ExpressionTrait for PrefixExpression {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			format!("({}{})", self.operator, 
+			match &self.right {
+				Some(expr) => expr.to_string(),
+				None => String::from("<empty>")
+			})
+		}
+	}
+	
+	struct InfixExpression {
+		token: Token,
+		left: Option<Box<dyn ExpressionTrait>>,
+		operator: String,
+		right: Option<Box<dyn ExpressionTrait>>
+	}
+	
+	impl InfixExpression {
+		fn new() -> InfixExpression {
+			InfixExpression{token: Token::new(), left: None, operator: String::new(), right: None}
+		}
+	}
+	
+	impl ExpressionTrait for InfixExpression {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			format!("({} {} {})",
+				match &self.left {
+					Some(expr) => expr.to_string(),
+					None => String::from("<empty>")
+				},
+				self.operator, 
+				match &self.right {
+					Some(expr) => expr.to_string(),
+					None => String::from("<empty>")
+				})
+		}
+	}
+	
 	struct LetStatement {
 		token: Token,
 		name: String,
@@ -423,7 +498,7 @@ pub mod lexer {
 	impl ExpressionStatement {
 		pub fn new() -> Box<ExpressionStatement> {
 			Box::new(ExpressionStatement{
-				token: Token{token_type: TokenType::Identifier, literal: EOF.to_string()},
+				token: Token{token_type: TokenType::Identifier, literal: String::new()},
 				expression: Box::new(Expression::new())
 			})
 		}
@@ -439,7 +514,7 @@ pub mod lexer {
 		}
 	}
 	
-	struct Program {
+	pub struct Program {
 		statements: Vec<Box<dyn StatementTrait>>
 	}
 	
@@ -468,44 +543,22 @@ pub mod lexer {
 		}
 	}
 	
-	type InfixParserFn = fn() -> Option<Box<dyn ExpressionTrait>>;
-	type PrefixParserFn = fn(&Token) -> Option<Box<dyn ExpressionTrait>>;
-		
-	
-	struct Parser {
-		
+	pub struct Parser {
 		lexer: Lexer,
 		errors: Vec<String>,
 		current_token: Token,
-		peek_token: Token,
-		infix_parsers: std::collections::HashMap<TokenType, InfixParserFn>,
-		prefix_parsers: std::collections::HashMap<TokenType, PrefixParserFn>
+		peek_token: Token
 	}
 	
-	fn parse_identifier(_tok: &Token) -> Option<Box<dyn ExpressionTrait>> {
-		None
-	}
 	
-	fn parse_integer(tok: &Token) -> Option<Box<dyn ExpressionTrait>> {
-		if let Ok(i) = tok.literal.parse::<i64>() {
-			Some(Box::new(IntegerExpression{token: tok.clone(), value: i}))
-		} else {
-			None
-		}
-	}
 		
 	impl Parser {
 		pub fn new(lex: Lexer) -> Parser {
 			let mut parser = Parser{lexer: lex,
 				errors: vec![],
 				current_token: Token{token_type: TokenType::Eof, literal: String::new()},
-				peek_token: Token{token_type: TokenType::Eof, literal: String::new()},
-				infix_parsers: std::collections::HashMap::new(),
-				prefix_parsers: std::collections::HashMap::new()
+				peek_token: Token{token_type: TokenType::Eof, literal: String::new()}
 			};
-			
-			parser.prefix_parsers.insert(TokenType::Identifier, parse_identifier);
-			parser.prefix_parsers.insert(TokenType::Integer, parse_integer);
 			
 			// populate current and peek TokenType
 			parser.next_token();
@@ -523,20 +576,25 @@ pub mod lexer {
 				tok, self.peek_token.token_type));
 		}
 		
-		pub fn next_token(&mut self) {
+		fn next_token(&mut self) {
 			self.current_token = self.peek_token.clone();
 			self.peek_token = self.lexer.next_token();
+			println!("next_token {:?}", self.current_token.clone());
 		}
 		
 		pub fn parse_program(&mut self) -> Program {
+			println!("parse_program");
 			let mut program = Program::new();
 			
 			loop {
+				println!("parse_program - parse next token");
 				match self.current_token.token_type {
 					TokenType::Eof => break,
 					_ => {
 						if let Some(statement) = self.parse_statement() {
 							program.statements.push(statement);
+						} else {
+							break;
 						}
 						
 						self.next_token();
@@ -547,7 +605,8 @@ pub mod lexer {
 			return program;
 		}
 		
-		pub fn parse_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+		fn parse_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			println!("parse_statement");
 			match self.current_token.token_type {
 				TokenType::Let => self.parse_let_statement(),
 				TokenType::Return => self.parse_return_statement(),
@@ -555,7 +614,8 @@ pub mod lexer {
 			}
 		}
 		
-		pub fn parse_let_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+		fn parse_let_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			println!("parse_let_statement");
 			let stmt = LetStatement::new();
 			
 			if !self.expect_peek(TokenType::Identifier) {
@@ -569,7 +629,8 @@ pub mod lexer {
 			return Some(stmt);
 		}
 		
-		pub fn parse_return_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+		fn parse_return_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			println!("parse_return_statement");
 			let stmt = ReturnStatement::new();
 			
 			self.next_token();
@@ -581,9 +642,10 @@ pub mod lexer {
 			return Some(stmt);
 		}
 		
-		pub fn parse_expression_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+		fn parse_expression_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			println!("parse_expression_statement");
 			if let Some(expr) = self.parse_expression(Precedence::Lowest) {
-				while !self.is_current_token(TokenType::Semicolon) {
+				if !self.is_current_token(TokenType::Semicolon) {
 					self.next_token();
 				}
 				
@@ -595,14 +657,75 @@ pub mod lexer {
 			}
 		}
 		
-		fn parse_expression(&self, _prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
-			if let Some(prefix) = self.prefix_parsers.get(&self.current_token.token_type) {
-				prefix(&self.current_token)
+		fn parse_identifier(&self) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_identifier");
+			Some(Box::new(IdentifierExpression{token: self.current_token.clone(),
+				value: self.current_token.literal.clone()}))
+		}
+		
+		fn parse_integer(&self) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_integer");
+			if let Ok(i) = self.current_token.literal.parse::<i64>() {
+				Some(Box::new(IntegerExpression{token: self.current_token.clone(), value: i}))
 			} else {
 				None
 			}
 		}
 		
+		fn parse_prefix(&mut self) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_prefix");
+			let mut expr = PrefixExpression{token: self.current_token.clone(),
+				operator: self.current_token.literal.clone(),
+				right: None
+			};
+			
+			self.next_token();
+			expr.right = self.parse_expression(Precedence::Prefix);
+			return Some(Box::new(expr));
+		}
+		
+		fn parse_infix(&mut self, left: Option<Box<dyn ExpressionTrait>>) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_infix");
+			let mut expr = InfixExpression{
+				token: self.current_token.clone(),
+				left: left,
+				operator: self.current_token.literal.clone(),
+				right: None
+			};
+			
+			let prec = self.current_precedence();
+			self.next_token();
+			expr.right = self.parse_expression(prec);
+			return Some(Box::new(expr));
+		}
+		
+		fn parse_expression(&mut self, prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_expression");
+			let mut left_expr = match self.current_token.token_type {
+				TokenType::Identifier => self.parse_identifier(),
+				TokenType::Integer => self.parse_integer(),
+				TokenType::Bang => self.parse_prefix(),
+				TokenType::Minus => self.parse_prefix(),
+				_ => {
+					self.no_prefix_parse_fn_error(self.current_token.token_type.clone());
+					return None;
+				}
+			};
+			
+			while self.is_peek_token(TokenType::Semicolon) && prec < self.peek_precedence() {
+// 				let next_prec = self.peek_token.token_type.clone();
+				let next_prec = PRECEDENCES.get(&self.peek_token.token_type);
+				if next_prec == None {
+					return left_expr;
+				}
+				
+				self.next_token();
+				
+				left_expr = self.parse_infix(left_expr);
+			}
+			
+			return left_expr;
+		}
 		
 		fn is_current_token(&self, tok: TokenType) -> bool {
 			tok == self.current_token.token_type
@@ -622,37 +745,22 @@ pub mod lexer {
 			}
 		}
 		
-		pub fn register_infix(&mut self, tok: TokenType, infix: InfixParserFn) {
-			self.infix_parsers.insert(tok, infix);
+		fn no_prefix_parse_fn_error(&mut self, tok: TokenType) {
+			self.errors.push(format!("no prefix parse function for {:?} found", tok))
 		}
 		
-		pub fn register_prefix(&mut self, tok: TokenType, prefix: PrefixParserFn) {
-			self.prefix_parsers.insert(tok, prefix);
+		fn peek_precedence(&self) -> Precedence {
+			match PRECEDENCES.get(&self.peek_token.token_type) {
+				Some(prec) => prec.clone(),
+				None => Precedence::Lowest
+			}
+		}
+		
+		fn current_precedence(&self) -> Precedence {
+			match PRECEDENCES.get(&self.current_token.token_type) {
+				Some(prec) => prec.clone(),
+				None => Precedence::Lowest
+			}
 		}
 	}
-	
-	
 }
-
-// #[cfg(test)]
-// mod tests {
-// 	#[test]
-// 	fn it_works() {
-// 		assert_eq!(2+2, 4);
-// 	}
-// 	
-// 	#[test]
-// 	fn call_lexer() {
-// 		let mut l: lexer::lexer::Lexer = lexer::lexer::Lexer::new(String::from("let abc=,{}() 123"));
-// 		let mut tok = l.next_token();
-// 	
-// 		match tok {
-//  			lexer::lexer::TokenType::Identifier(s) => {
-// 				println!("{}", s);
-// 			},
-// 			_ => {
-// 				println!("somesome");
-// 			}
-// 		}
-// 	}
-// }
