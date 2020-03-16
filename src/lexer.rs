@@ -382,6 +382,65 @@ pub mod lexer {
 		}
 	}
 	
+	struct BoolExpression {
+		token: Token,
+		value: bool
+	}
+	
+	impl BoolExpression {
+		fn new() -> BoolExpression {
+			BoolExpression{token: Token::new(), value: false}
+		}
+	}
+	
+	impl ExpressionTrait for BoolExpression {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			self.token.literal.clone()
+		}
+	}
+	
+	struct IfExpression {
+		token: Token,
+		condition: Box<dyn ExpressionTrait>,
+		consequence: Box<dyn StatementTrait>,
+		alternative: Option<Box<dyn StatementTrait>>
+	}
+	
+	impl IfExpression {
+		fn new() -> IfExpression {
+			IfExpression {token: Token::new(),
+				condition: Box::new(Expression::new()),
+				consequence: Box::new(Statement::new()),
+				alternative: None
+			}
+		}
+	}
+	
+	impl ExpressionTrait for IfExpression {
+		fn token_literal(&self) -> &str {
+			self.token.literal.as_str()
+		}
+		
+		fn to_string(&self) -> String {
+			format!("if {} {} {} {}",
+				self.condition.to_string(),
+				self.consequence.to_string(),
+				match self.alternative {
+					Some(_) => String::from("else"),
+					None => String::new()
+				},
+				match self.alternative {
+					Some(a) => a.to_string(),
+					None => String::new()
+				}
+			)
+		}
+	}
+	
 	struct PrefixExpression {
 		token: Token,
 		operator: String,
@@ -616,6 +675,7 @@ pub mod lexer {
 		
 		fn parse_let_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
 			println!("parse_let_statement");
+			
 			let stmt = LetStatement::new();
 			
 			if !self.expect_peek(TokenType::Identifier) {
@@ -631,6 +691,7 @@ pub mod lexer {
 		
 		fn parse_return_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
 			println!("parse_return_statement");
+			
 			let stmt = ReturnStatement::new();
 			
 			self.next_token();
@@ -644,6 +705,7 @@ pub mod lexer {
 		
 		fn parse_expression_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
 			println!("parse_expression_statement");
+			
 			if let Some(expr) = self.parse_expression(Precedence::Lowest) {
 				if !self.is_current_token(TokenType::Semicolon) {
 					self.next_token();
@@ -659,16 +721,38 @@ pub mod lexer {
 		
 		fn parse_identifier(&self) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_identifier");
+			
 			Some(Box::new(IdentifierExpression{token: self.current_token.clone(),
 				value: self.current_token.literal.clone()}))
 		}
 		
 		fn parse_integer(&self) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_integer");
+			
 			if let Ok(i) = self.current_token.literal.parse::<i64>() {
-				Some(Box::new(IntegerExpression{token: self.current_token.clone(), value: i}))
+				Some(Box::new(IntegerExpression{token: self.current_token.clone(),
+					value: i}))
 			} else {
 				None
+			}
+		}
+		
+		fn parse_boolean(&self) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_boolean");
+			
+			Some(Box::new(BoolExpression{token: self.current_token.clone(),
+				value: self.is_current_token(TokenType::True)
+			}))
+		}
+		
+		fn parse_grouped_expression(&self) -> Option<Box<dyn ExpressionTrait>> {
+			println!("parse_grouped_expression");
+			
+			let expr = self.parse_expression(Precedence::Lowest);
+			if !self.expect_peek(TokenType::RPAREN) {
+				return None;
+			} else {
+				return Some(Box::new(expr));
 			}
 		}
 		
@@ -706,6 +790,9 @@ pub mod lexer {
 				TokenType::Integer => self.parse_integer(),
 				TokenType::Bang => self.parse_prefix(),
 				TokenType::Minus => self.parse_prefix(),
+				TokenType::True => self.parse_boolean(),
+				TokenType::False => self.parse_boolean(),
+				TokenType::Lparen => self.parse_grouped_expression(),
 				_ => {
 					self.no_prefix_parse_fn_error(self.current_token.token_type.clone());
 					return None;
@@ -713,7 +800,6 @@ pub mod lexer {
 			};
 			
 			while self.is_peek_token(TokenType::Semicolon) && prec < self.peek_precedence() {
-// 				let next_prec = self.peek_token.token_type.clone();
 				let next_prec = PRECEDENCES.get(&self.peek_token.token_type);
 				if next_prec == None {
 					return left_expr;
