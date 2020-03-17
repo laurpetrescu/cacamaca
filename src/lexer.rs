@@ -330,15 +330,27 @@ pub mod lexer {
 		}
 	}
 	
-// 	impl StatementTrait for Expression {
-// 		fn token_literal(&self) -> &str {
-// 			self.token.literal.as_str()
-// 		}
-// 		
-// 		fn to_string(&self) -> String {
-// 			self.token.literal.clone()
-// 		}
-// 	}
+	struct Statement {
+		token: Token
+	}
+	
+	impl StatementTrait for Statement {
+		fn token_literal(&self) -> &str {
+			&self.token.literal
+		}
+		
+		fn to_string(&self) -> String {
+			format!("{}", self.token.literal)
+		}
+	}
+	
+	impl Statement {
+		pub fn new() -> Statement {
+			Statement{
+				token: Token{token_type: TokenType::Eof, literal: EOF.to_string()}
+			}
+		}
+	}
 	
 	struct IdentifierExpression {
 		token: Token,
@@ -429,11 +441,11 @@ pub mod lexer {
 			format!("if {} {} {} {}",
 				self.condition.to_string(),
 				self.consequence.to_string(),
-				match self.alternative {
+				match &self.alternative {
 					Some(_) => String::from("else"),
 					None => String::new()
 				},
-				match self.alternative {
+				match &self.alternative {
 					Some(a) => a.to_string(),
 					None => String::new()
 				}
@@ -570,6 +582,31 @@ pub mod lexer {
 		
 		fn to_string(&self) -> String {
 			self.expression.to_string()
+		}
+	}
+	
+	struct BlockStatement {
+		token: Token, // the { token
+		statements: Vec<Box<dyn StatementTrait>>
+	}
+	
+	impl BlockStatement {
+		pub fn new() -> Box<BlockStatement> {
+			Box::new(BlockStatement{
+				token: Token{token_type: TokenType::Lbrace, literal: LBRACE.to_string()},
+				statements: vec![]
+			})
+		}
+	}
+	
+	impl StatementTrait for BlockStatement {
+		fn token_literal(&self) -> &str {
+			&self.token.literal
+		}
+		
+		fn to_string(&self) -> String {
+			let mut out = String::new();
+			
 		}
 	}
 	
@@ -745,19 +782,20 @@ pub mod lexer {
 			}))
 		}
 		
-		fn parse_grouped_expression(&self) -> Option<Box<dyn ExpressionTrait>> {
+		fn parse_grouped_expression(&mut self) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_grouped_expression");
 			
 			let expr = self.parse_expression(Precedence::Lowest);
-			if !self.expect_peek(TokenType::RPAREN) {
+			if !self.expect_peek(TokenType::Rparen) {
 				return None;
 			} else {
-				return Some(Box::new(expr));
+				return expr;
 			}
 		}
 		
 		fn parse_prefix(&mut self) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_prefix");
+		
 			let mut expr = PrefixExpression{token: self.current_token.clone(),
 				operator: self.current_token.literal.clone(),
 				right: None
@@ -781,6 +819,11 @@ pub mod lexer {
 			self.next_token();
 			expr.right = self.parse_expression(prec);
 			return Some(Box::new(expr));
+		}
+		
+		fn parse_block_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
+			let mut block = Box::new(BlockStatement::new());
+			block.sta
 		}
 		
 		fn parse_expression(&mut self, prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
