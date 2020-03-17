@@ -605,8 +605,7 @@ pub mod lexer {
 		}
 		
 		fn to_string(&self) -> String {
-			let mut out = String::new();
-			
+			self.statements.iter().map(|i| i.to_string()).collect::<String>()
 		}
 	}
 	
@@ -822,8 +821,22 @@ pub mod lexer {
 		}
 		
 		fn parse_block_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
-			let mut block = Box::new(BlockStatement::new());
-			block.sta
+			let mut block = Box::new(BlockStatement{
+				token: self.current_token.clone(),
+				statements: vec![]
+			});
+			
+			self.next_token();
+			while !self.is_current_token(TokenType::Rbrace) && 
+				!self.is_current_token(TokenType::Eof) {
+				if let Some(stmt) = self.parse_statement() {
+					block.statements.push(stmt);
+				}
+				
+				self.next_token();
+			}
+			
+			return Some(block);
 		}
 		
 		fn parse_expression(&mut self, prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
