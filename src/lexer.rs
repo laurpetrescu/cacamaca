@@ -528,12 +528,12 @@ pub mod lexer {
 	}
 	
 	impl LetStatement {
-		pub fn new() -> Box<LetStatement> {
-			Box::new(LetStatement{
+		pub fn new() -> LetStatement {
+			LetStatement{
 				token: Token{token_type: TokenType::Let, literal: LET.to_string()},
 				name: String::new(),
 				value: Expression::new()
-			})
+			}
 		}
 	}
 	
@@ -553,11 +553,11 @@ pub mod lexer {
 	}
 	
 	impl ReturnStatement {
-		pub fn new() -> Box<ReturnStatement> {
-			Box::new(ReturnStatement{
+		pub fn new() -> ReturnStatement {
+			ReturnStatement{
 				token: Token{token_type: TokenType::Return, literal: RETURN.to_string()},
 				return_value: Expression::new()
-			})
+			}
 		}
 	}
 	
@@ -567,11 +567,11 @@ pub mod lexer {
 	}
 	
 	impl ExpressionStatement {
-		pub fn new() -> Box<ExpressionStatement> {
-			Box::new(ExpressionStatement{
+		pub fn new() -> ExpressionStatement {
+			ExpressionStatement{
 				token: Token{token_type: TokenType::Identifier, literal: String::new()},
 				expression: Box::new(Expression::new())
-			})
+			}
 		}
 	}
 	
@@ -591,11 +591,11 @@ pub mod lexer {
 	}
 	
 	impl BlockStatement {
-		pub fn new() -> Box<BlockStatement> {
-			Box::new(BlockStatement{
+		pub fn new() -> BlockStatement {
+			BlockStatement{
 				token: Token{token_type: TokenType::Lbrace, literal: LBRACE.to_string()},
 				statements: vec![]
-			})
+			}
 		}
 	}
 	
@@ -606,6 +606,33 @@ pub mod lexer {
 		
 		fn to_string(&self) -> String {
 			self.statements.iter().map(|i| i.to_string()).collect::<String>()
+		}
+	}
+	
+	struct FunctionLiteral {
+		token: Token, // fn token
+		parameters: Vec<Box<dyn StatementTrait>>,
+		body: BlockStatement
+	}
+	
+	impl FunctionLiteral {
+		pub fn new() -> FunctionLiteral {
+			FunctionLiteral{
+				token: Token{token_type: TokenType::Function, literal: FUNCTION.to_string()},
+				parameters: vec![],
+				body: BlockStatement::new()
+			}
+		}
+	}
+	
+	impl StatementTrait for FunctionLiteral {
+		fn token_literal(&self) -> &str {
+			&self.token.literal
+		}
+		
+		fn to_string(&self) -> String {
+			let params = self.parameters.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(", ");
+			format!("{}({}) {}", self.token_literal(), params, self.body.to_string())
 		}
 	}
 	
@@ -712,7 +739,7 @@ pub mod lexer {
 		fn parse_let_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
 			println!("parse_let_statement");
 			
-			let stmt = LetStatement::new();
+			let stmt = Box::new(LetStatement::new());
 			
 			if !self.expect_peek(TokenType::Identifier) {
 				return None;
@@ -728,7 +755,7 @@ pub mod lexer {
 		fn parse_return_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
 			println!("parse_return_statement");
 			
-			let stmt = ReturnStatement::new();
+			let stmt = Box::new(ReturnStatement::new());
 			
 			self.next_token();
 			
@@ -839,6 +866,19 @@ pub mod lexer {
 			return Some(block);
 		}
 		
+		fn parse_function(&mut self) -> Option<Box<dyn StatementTrait>> {
+			if !self.expect_peek(TokenType::Lparen) {
+				return None;
+			}
+			
+			let mut func = Box::new(FunctionLiteral::new());
+			func.parameters = self.parse_function_parameters();
+			
+			if !self.expect_peek(TokenType::Rparen) {
+				
+			}
+		}
+		
 		fn parse_expression(&mut self, prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_expression");
 			let mut left_expr = match self.current_token.token_type {
@@ -849,6 +889,7 @@ pub mod lexer {
 				TokenType::True => self.parse_boolean(),
 				TokenType::False => self.parse_boolean(),
 				TokenType::Lparen => self.parse_grouped_expression(),
+				TokenType::Function => self.parse_function(),
 				_ => {
 					self.no_prefix_parse_fn_error(self.current_token.token_type.clone());
 					return None;
