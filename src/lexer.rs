@@ -609,30 +609,61 @@ pub mod lexer {
 		}
 	}
 	
-	struct FunctionLiteral {
+	struct FunctionExpression {
 		token: Token, // fn token
-		parameters: Vec<Box<dyn StatementTrait>>,
-		body: BlockStatement
+		parameters: Vec<IdentifierExpression>,
+		body: Option<BlockStatement>
 	}
 	
-	impl FunctionLiteral {
-		pub fn new() -> FunctionLiteral {
-			FunctionLiteral{
+	impl FunctionExpression {
+		pub fn new() -> FunctionExpression {
+			FunctionExpression{
 				token: Token{token_type: TokenType::Function, literal: FUNCTION.to_string()},
 				parameters: vec![],
-				body: BlockStatement::new()
+				body: None
 			}
 		}
 	}
 	
-	impl StatementTrait for FunctionLiteral {
+	impl ExpressionTrait for FunctionExpression {
 		fn token_literal(&self) -> &str {
 			&self.token.literal
 		}
 		
 		fn to_string(&self) -> String {
 			let params = self.parameters.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(", ");
-			format!("{}({}) {}", self.token_literal(), params, self.body.to_string())
+			format!("{}({}) {}", self.token_literal(), params, 
+				match &self.body {
+					Some(body) => body.to_string(),
+					None => "<empty>".to_string()
+				})
+		}
+	}
+	
+	struct CallExpression {
+		token: Token, // ( token
+		function: Option<Box<dyn ExpressionTrait>>, // identifier or function
+		arguments: Vec<Box<dyn ExpressionTrait>>
+	}
+	
+	impl CallExpression {
+		pub fn new() -> CallExpression {
+			CallExpression{
+				token: Token{token_type: TokenType::Lparen, literal: LPAREN.to_string()},
+				function: None,
+				arguments: vec![]
+			}
+		}
+	}
+	
+	impl ExpressionTrait for CallExpression {
+		fn token_literal(&self) -> &str {
+			&self.token.literal
+		}
+		
+		fn to_string(&self) -> String {
+			let args = self.arguments.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(", ");
+			format!("{}({})", self.function.to_string(), args)
 		}
 	}
 	
@@ -673,13 +704,13 @@ pub mod lexer {
 	}
 	
 	
-		
+	
 	impl Parser {
 		pub fn new(lex: Lexer) -> Parser {
 			let mut parser = Parser{lexer: lex,
 				errors: vec![],
-				current_token: Token{token_type: TokenType::Eof, literal: String::new()},
-				peek_token: Token{token_type: TokenType::Eof, literal: String::new()}
+				current_token: Token{token_type: TokenType::Eof, literal: EOF.to_string()},
+				peek_token: Token{token_type: TokenType::Eof, literal: EOF.to_string()}
 			};
 			
 			// populate current and peek TokenType
@@ -742,7 +773,7 @@ pub mod lexer {
 			let stmt = Box::new(LetStatement::new());
 			
 			if !self.expect_peek(TokenType::Identifier) {
-				return None;
+				None
 			}
 			
 			while !self.is_current_token(TokenType::Semicolon) {
@@ -811,11 +842,10 @@ pub mod lexer {
 		fn parse_grouped_expression(&mut self) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_grouped_expression");
 			
-			let expr = self.parse_expression(Precedence::Lowest);
-			if !self.expect_peek(TokenType::Rparen) {
-				return None;
+			if self.expect_peek(TokenType::Rparen) {
+				self.parse_expression(Precedence::Lowest)
 			} else {
-				return expr;
+				None
 			}
 		}
 		
@@ -847,11 +877,11 @@ pub mod lexer {
 			return Some(Box::new(expr));
 		}
 		
-		fn parse_block_statement(&mut self) -> Option<Box<dyn StatementTrait>> {
-			let mut block = Box::new(BlockStatement{
+		fn parse_block_statement(&mut self) -> Option<BlockStatement> {
+			let mut block = BlockStatement{
 				token: self.current_token.clone(),
 				statements: vec![]
-			});
+			};
 			
 			self.next_token();
 			while !self.is_current_token(TokenType::Rbrace) && 
@@ -866,22 +896,79 @@ pub mod lexer {
 			return Some(block);
 		}
 		
-		fn parse_function(&mut self) -> Option<Box<dyn StatementTrait>> {
-			if !self.expect_peek(TokenType::Lparen) {
-				return None;
+		fn parse_function_parameters(&mut self) -> Vec<IdentifierExpression> {
+			if self.is_peek_token(TokenType::Rparen) {
+				self.next_token();
+				vec![]
 			}
 			
-			let mut func = Box::new(FunctionLiteral::new());
+			self.next_token();
+			let mut idents: Vec<IdentifierExpression> = vec![IdentifierExpression{
+				token: self.current_token.clone(), value: self.current_token.literal.clone()}];
+			
+			while self.is_peek_token(TokenType::Comma) {
+				self.next_token();
+				self.next_token();
+				idents.push(IdentifierExpression{token: self.current_token.clone(), 
+					value: self.current_token.literal.clone()});
+			}
+			
+			if !self.is_peek_token(TokenType::Rparen) {
+				vec![]
+			}
+			
+			return idents;
+		}
+		
+		fn parse_function(&mut self) -> Option<Box<dyn ExpressionTrait>> {
+			if !self.expect_peek(TokenType::Lparen) {
+				None
+			}
+			
+			let mut func = Box::new(FunctionExpression::new());
 			func.parameters = self.parse_function_parameters();
 			
-			if !self.expect_peek(TokenType::Rparen) {
-				
+			if !self.expect_peek(TokenType::Lbrace) {
+				None
 			}
+			
+			func.body = self.parse_block_statement();
+			return Some(func);
+		}
+		
+		fn parse_call_arguments(&mut self) -> Vec<Box<dyn ExpressionTrait> {
+			if self.is_peek_token(TokenType::Rparen) {
+				self.next_token();
+				vec![]
+			}
+			
+			self.next_token();
+			let mut args: Vec<Box<dyn ExpressionTrait>> = vec![self.parse_expression(Precedence::Lowest)];
+			
+			while self.is_peek_token(TokenType::Comma) {
+				self.next_token();
+				self.next_token();
+				args.push(self.parse_expression(Precedence::Lowest));
+			}
+			
+			if !self.expect_peek(TokenType::Rparen) {
+				vec![]
+			}
+			
+			return args;
+		}
+		
+		fn parse_call_expression(&mut self,  left: Option<Box<dyn ExpressionTrait>>) -> Option<Box<dyn ExpressionTrait>> {
+			Some(Box::new(CallExpression{token: self.current_token.clone(),
+				function: left,
+				arguments: self.parse_call_arguments()
+			}))
 		}
 		
 		fn parse_expression(&mut self, prec: Precedence) -> Option<Box<dyn ExpressionTrait>> {
 			println!("parse_expression");
-			let mut left_expr = match self.current_token.token_type {
+			// parse prefix 
+			let mut left_expr = match &self.current_token.token_type {
 				TokenType::Identifier => self.parse_identifier(),
 				TokenType::Integer => self.parse_integer(),
 				TokenType::Bang => self.parse_prefix(),
@@ -896,6 +983,7 @@ pub mod lexer {
 				}
 			};
 			
+			// parse infix
 			while self.is_peek_token(TokenType::Semicolon) && prec < self.peek_precedence() {
 				let next_prec = PRECEDENCES.get(&self.peek_token.token_type);
 				if next_prec == None {
@@ -904,7 +992,10 @@ pub mod lexer {
 				
 				self.next_token();
 				
-				left_expr = self.parse_infix(left_expr);
+				left_expr = match &self.current_token.token_type {
+					TokenType::Lparen => self.parse_call_expression(left_expr),
+					_ => self.parse_infix(left_expr)
+				}
 			}
 			
 			return left_expr;
